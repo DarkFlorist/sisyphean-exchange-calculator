@@ -58,9 +58,9 @@ const preForkMigratorValueAsleep = computed(() => repPrice.value * repUnmigrated
 const postForkMigratorValueAsleep = computed(() => cashUnmigrated.value * cashPrice.value)
 const repMigratorValueChangeAsleep = computed(() => postForkMigratorValueAsleep.value - preForkMigratorValueAsleep.value)
 
-const preForkCashHolderValue = computed(() => cashCap.value * cashPrice.value)
-const postForkCashHolderValueA = computed(() => (auctionEfficiencyPercentA.value === 0 ? cashMigratedToA.value : cashCap.value) * cashPrice.value)
-const postForkCashHolderValueB = computed(() => (auctionEfficiencyPercentB.value === 0 ? cashMigratedToB.value : cashCap.value) * cashPrice.value)
+const preForkCashHolderValue = computed(() => cashSupply.value * cashPrice.value)
+const postForkCashHolderValueA = computed(() => (auctionEfficiencyPercentA.value === 0 ? cashMigratedToA.value : cashSupply.value) * cashPrice.value)
+const postForkCashHolderValueB = computed(() => (auctionEfficiencyPercentB.value === 0 ? cashMigratedToB.value : cashSupply.value) * cashPrice.value)
 // const cashHolderValueChangeA = computed(() => postForkCashHolderValueA.value - preForkCashHolderValue.value)
 // const cashHolderValueChangeB = computed(() => postForkCashHolderValueB.value - preForkCashHolderValue.value)
 const postForkCashHolderValueCombined = computed(() => (isAttackingA.value ? 0 : postForkCashHolderValueA.value) + (isAttackingB.value ? 0 : postForkCashHolderValueB.value))

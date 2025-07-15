@@ -1,4 +1,4 @@
-import { computed, Signal } from '@preact/signals'
+import { batch, computed, Signal } from '@preact/signals'
 import { CSSProperties } from 'preact/compat'
 import { Input } from './Input.js'
 
@@ -40,15 +40,32 @@ const cashUnmigrated = computed(() => repAsleepPercent.value * cashSupply.value 
 
 const cashNeededInA = computed(() => cashSupply.value - cashMigratedToA.value)
 const cashNeededInB = computed(() => cashSupply.value - cashMigratedToB.value)
-const repMintedInA = computed(() => auctionEfficiencyPercentA.value === 0 ? 0 : (cashNeededInA.value * cashPrice.value * 100 / auctionEfficiencyPercentA.value) / repPrice.value)
-const repMintedInB = computed(() => auctionEfficiencyPercentB.value === 0 ? 0 : (cashNeededInB.value * cashPrice.value * 100 / auctionEfficiencyPercentB.value) / repPrice.value)
+const cashNeededInEthInA = computed(() => cashNeededInA.value * cashPrice.value)
+const cashNeededInEthInB = computed(() => cashNeededInB.value * cashPrice.value)
+const postForkRepCapA = computed(() => repCap.value * postForkRepValuePercentA.value / 100)
+const postForkRepCapB = computed(() => repCap.value * postForkRepValuePercentB.value / 100)
+const auctionFailureA = computed(() => cashNeededInEthInA.value * 100 / auctionEfficiencyPercentA.value >= postForkRepCapA.value)
+const auctionFailureB = computed(() => cashNeededInEthInB.value * 100 / auctionEfficiencyPercentB.value >= postForkRepCapB.value)
+// derived from:
+// mintedRep * ethPerRepAfterMint = cashNeededInEth / autionEfficiency
+// mintedRep * dcfInEth / repSupplyAfter = cashNeededInEth / autionEfficiency
+// mintedRep * dcfInEth / (migratedRep + mintedRep) = cashNeededInEth / autionEfficiency
+// isolate mintedRep
+const repMintedInA = computed(() => auctionEfficiencyPercentA.value === 0 || auctionFailureA.value
+	? repMigratedToA.value * 1000000
+	: (cashNeededInEthInA.value * repMigratedToA.value / (postForkRepCapA.value * auctionEfficiencyPercentA.value / 100 - cashNeededInEthInA.value)))
+const repMintedInB = computed(() => auctionEfficiencyPercentB.value === 0 || auctionFailureB.value
+	? repMigratedToB.value * 1000000
+	: (cashNeededInEthInB.value * repMigratedToB.value / (postForkRepCapB.value * auctionEfficiencyPercentB.value / 100- cashNeededInEthInB.value)))
+const cashFromAuctionInA = computed(() => isAttackingA.value ? 0 : repMintedInA.value !== repMigratedToA.value * 1000000 ? cashNeededInA.value : postForkRepCapA.value * auctionEfficiencyPercentA.value / cashPrice.value / 100)
+const cashFromAuctionInB = computed(() => isAttackingB.value ? 0 : repMintedInB.value !== repMigratedToB.value * 1000000 ? cashNeededInB.value : postForkRepCapB.value * auctionEfficiencyPercentB.value / cashPrice.value / 100)
 
 const preForkMigratorValueA = computed(() => repPrice.value * repMigratedToA.value)
 const preForkMigratorValueB = computed(() => repPrice.value * repMigratedToB.value)
 const postForkRepSupplyA = computed(() => repMigratedToA.value + repMintedInA.value)
 const postForkRepSupplyB = computed(() => repMigratedToB.value + repMintedInB.value)
-const postForkRepPriceA = computed(() => repCap.value * postForkRepValuePercentA.value / postForkRepSupplyA.value / 100)
-const postForkRepPriceB = computed(() => repCap.value * postForkRepValuePercentB.value / postForkRepSupplyB.value / 100)
+const postForkRepPriceA = computed(() => postForkRepCapA.value / postForkRepSupplyA.value)
+const postForkRepPriceB = computed(() => postForkRepCapB.value / postForkRepSupplyB.value)
 const postForkMigratorValueA = computed(() => postForkRepPriceA.value * repMigratedToA.value + (isAttackingA.value ? postForkCashHolderValueA.value : 0))
 const postForkMigratorValueB = computed(() => postForkRepPriceB.value * repMigratedToB.value + (isAttackingB.value ? postForkCashHolderValueB.value : 0))
 const repMigratorValueChangeA = computed(() => postForkMigratorValueA.value - preForkMigratorValueA.value)
@@ -58,16 +75,16 @@ const preForkMigratorValueAsleep = computed(() => repPrice.value * repUnmigrated
 const postForkMigratorValueAsleep = computed(() => cashUnmigrated.value * cashPrice.value)
 const repMigratorValueChangeAsleep = computed(() => postForkMigratorValueAsleep.value - preForkMigratorValueAsleep.value)
 
-const preForkCashHolderValue = computed(() => cashSupply.value * cashPrice.value)
-const postForkCashHolderValueA = computed(() => (auctionEfficiencyPercentA.value === 0 ? cashMigratedToA.value : cashSupply.value) * cashPrice.value)
-const postForkCashHolderValueB = computed(() => (auctionEfficiencyPercentB.value === 0 ? cashMigratedToB.value : cashSupply.value) * cashPrice.value)
+const preForkCashHolderValue = computed(() => cashCap.value)
+const postForkCashHolderValueA = computed(() => (cashMigratedToA.value + cashFromAuctionInA.value) * cashPrice.value)
+const postForkCashHolderValueB = computed(() => (cashMigratedToB.value + cashFromAuctionInB.value) * cashPrice.value)
 // const cashHolderValueChangeA = computed(() => postForkCashHolderValueA.value - preForkCashHolderValue.value)
 // const cashHolderValueChangeB = computed(() => postForkCashHolderValueB.value - preForkCashHolderValue.value)
 const postForkCashHolderValueCombined = computed(() => (isAttackingA.value ? 0 : postForkCashHolderValueA.value) + (isAttackingB.value ? 0 : postForkCashHolderValueB.value))
 const cashHolderValueChangeCombined = computed(() => postForkCashHolderValueCombined.value - preForkCashHolderValue.value)
 
-const auctionParticipantValueBeforeA = computed(() => (auctionEfficiencyPercentA.value === 0 ? 0 : cashNeededInA.value) * cashPrice.value)
-const auctionParticipantValueBeforeB = computed(() => (auctionEfficiencyPercentB.value === 0 ? 0 : cashNeededInB.value) * cashPrice.value)
+const auctionParticipantValueBeforeA = computed(() => (auctionEfficiencyPercentA.value === 0 ? 0 : cashFromAuctionInA.value) * cashPrice.value)
+const auctionParticipantValueBeforeB = computed(() => (auctionEfficiencyPercentB.value === 0 ? 0 : cashFromAuctionInB.value) * cashPrice.value)
 const auctionParticipantValueAfterA = computed(() => repMintedInA.value * postForkRepPriceA.value)
 const auctionParticipantValueAfterB = computed(() => repMintedInB.value * postForkRepPriceB.value)
 const auctionParticipantGainsA = computed(() => auctionParticipantValueAfterA.value - auctionParticipantValueBeforeA.value)
@@ -181,6 +198,14 @@ export function App(_: {}) {
 				<span>{cashNeededInB.value.toFixed(3)}</span>
 			</label>
 			<label>
+				<span>CASH Received A:</span>
+				<span>{cashFromAuctionInA.value.toFixed(3)}</span>
+			</label>
+			<label>
+				<span>CASH Received B:</span>
+				<span>{cashFromAuctionInB.value.toFixed(3)}</span>
+			</label>
+			<label>
 				<span>REP Minted in A:</span>
 				<span>{repMintedInA.value.toFixed(3)}</span>
 			</label>
@@ -201,44 +226,120 @@ export function App(_: {}) {
 			</label>
 			<label>
 				<span>REP Migrator Change in A:</span>
-				<span style={{textAlign: 'right'}}>{postForkMigratorValueA.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{postForkMigratorValueA.value.toFixed(3)}</span>
 				<span>-</span>
-				<span style={{textAlign: 'right'}}>{preForkMigratorValueA.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{preForkMigratorValueA.value.toFixed(3)}</span>
 				<span>=</span>
 				<span style={{ color: repMigratorValueChangeA.value >= 0 ? 'Olive' : 'Red', textAlign: 'right'}}>{repMigratorValueChangeA.value.toFixed(3)}</span>
 			</label>
 			<label>
 				<span>REP Migrator Change in B:</span>
-				<span style={{textAlign: 'right'}}>{postForkMigratorValueB.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{postForkMigratorValueB.value.toFixed(3)}</span>
 				<span>-</span>
-				<span style={{textAlign: 'right'}}>{preForkMigratorValueB.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{preForkMigratorValueB.value.toFixed(3)}</span>
 				<span>=</span>
 				<span style={{ color: repMigratorValueChangeB.value >= 0 ? 'Olive' : 'Red', textAlign: 'right'}}>{repMigratorValueChangeB.value.toFixed(3)}</span>
 			</label>
 			<label>
 				<span>REP Migrator Change Unmigrated:</span>
-				<span style={{textAlign: 'right'}}>{postForkMigratorValueAsleep.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{postForkMigratorValueAsleep.value.toFixed(3)}</span>
 				<span>-</span>
-				<span style={{textAlign: 'right'}}>{preForkMigratorValueAsleep.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{preForkMigratorValueAsleep.value.toFixed(3)}</span>
 				<span>=</span>
 				<span style={{ color: repMigratorValueChangeAsleep.value >= 0 ? 'Olive' : 'Red', textAlign: 'right'}}>{repMigratorValueChangeAsleep.value.toFixed(3)}</span>
 			</label>
 			<label>
 				<span>CASH Change for Traders:</span>
-				<span style={{textAlign: 'right'}}>{postForkCashHolderValueCombined.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{postForkCashHolderValueCombined.value.toFixed(3)}</span>
 				<span>-</span>
-				<span style={{textAlign: 'right'}}>{preForkCashHolderValue.value.toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{preForkCashHolderValue.value.toFixed(3)}</span>
 				<span>=</span>
 				<span style={{ color: cashHolderValueChangeCombined.value >= 0 ? 'Olive' : 'Red', textAlign: 'right'}}>{cashHolderValueChangeCombined.value.toFixed(3)}</span>
 			</label>
 			<label>
 				<span>Auction Participant Change:</span>
-				<span style={{textAlign: 'right'}}>{(auctionParticipantValueAfterA.value + auctionParticipantValueAfterB.value).toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{(auctionParticipantValueAfterA.value + auctionParticipantValueAfterB.value).toFixed(3)}</span>
 				<span>-</span>
-				<span style={{textAlign: 'right'}}>{(auctionParticipantValueBeforeB.value + auctionParticipantValueBeforeA.value).toFixed(3)}</span>
+				<span style={{justifyContent: 'right'}}>{(auctionParticipantValueBeforeB.value + auctionParticipantValueBeforeA.value).toFixed(3)}</span>
 				<span>=</span>
 				<span style={{ color: auctionParticipantGainsCombined.value >= 0 ? 'Olive' : 'Red', textAlign: 'right'}}>{auctionParticipantGainsCombined.value.toFixed(3)}</span>
 			</label>
+		</div>
+		<div style={{ margin: '10px' }}>
+			<span>
+				<button style={{ borderColor: 'green' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 100
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 75
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 95
+					repMigratedPercentB.value = 5
+				})}>Happy Path</button>
+				<button style={{ borderColor: 'green' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 100
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 75
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 5
+					repMigratedPercentB.value = 95
+				})}>Suicidal Whale</button>
+				<button style={{ borderColor: 'green' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 100
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 75
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 5
+					repMigratedPercentB.value = 15
+				})}>Sleepy Rep</button>
+				<button style={{ borderColor: 'green' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 50
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 75
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 5
+					repMigratedPercentB.value = 95
+				})}>DCF Harmed</button>
+			</span>
+			<span>
+				<button style={{ borderColor: 'red' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 100
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 5
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 5
+					repMigratedPercentB.value = 95
+				})}>Weak Auction</button>
+				<button style={{ borderColor: 'red' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = false
+					postForkRepValuePercentA.value = 50
+					postForkRepValuePercentB.value = 50
+					auctionEfficiencyPercentA.value = 75
+					auctionEfficiencyPercentB.value = 75
+					repMigratedPercentA.value = 50
+					repMigratedPercentB.value = 50
+				})}>Contentious Market</button>
+				<button style={{ borderColor: 'red' }} onClick={() => batch(() => {
+					isAttackingA.value = false
+					isAttackingB.value = true
+					postForkRepValuePercentA.value = 0
+					postForkRepValuePercentB.value = 0
+					auctionEfficiencyPercentA.value = 0
+					auctionEfficiencyPercentB.value = 0
+					repMigratedPercentA.value = 5
+					repMigratedPercentB.value = 95
+				})}>All Auctions Fail</button>
+			</span>
 		</div>
 	</main>
 }
